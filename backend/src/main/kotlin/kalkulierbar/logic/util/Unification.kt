@@ -51,11 +51,11 @@ class Unification {
             // As long as both relations aren't the same
             while (terms.isNotEmpty()) {
 
-                var (term1, term2) = terms.removeAt(0)
+                val (term1orig, term2orig) = terms.removeAt(0)
 
                 // Apply gathered substitutions just-in-time
-                term1 = VariableInstantiator.transform(term1, map)
-                term2 = VariableInstantiator.transform(term2, map)
+                var term1 = VariableInstantiator.transform(term1orig, map)
+                var term2 = VariableInstantiator.transform(term2orig, map)
 
                 // Skip terms if already equal
                 if (term1.synEq(term2)) {
@@ -66,13 +66,14 @@ class Unification {
                         throw UnificationImpossible("Variable '$term1' appears in '$term2'")
 
                     // Add substitution to map
+                    map.mapValuesTo(map) { VariableInstantiator.transform(it.value, mapOf(term1.spelling to term2)) }
                     map[term1.spelling] = term2
                 } else if (term2 is QuantifiedVariable) {
                     // Swap them around to be processed later
                     terms.add(Pair(term2, term1))
                 } else if (isCompatibleFunction(term1, term2)) {
-                    val t1 = term1 as Function
-                    val t2 = term2 as Function
+                    val t1 = term1orig as Function
+                    val t2 = term2orig as Function
                     // Break down into subterms
                     for (i in t1.arguments.indices)
                         terms.add(Pair(t1.arguments[i], t2.arguments[i]))
