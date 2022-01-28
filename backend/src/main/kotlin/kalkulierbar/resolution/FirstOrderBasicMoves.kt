@@ -112,6 +112,22 @@ private fun instantiateReturn(
 }
 
 /**
+ * Create a new atom by applying a variable instantiation on an existing atom
+ * @param baseAtom the atom to use for instantiation
+ * @param varAssign Map of Variables and terms they are instantiated with
+ * @return Instantiated atom
+ */
+private fun instantiateReturn(
+    baseAtom: Atom<Relation>,
+    varAssign: Map<String, FirstOrderTerm>
+): Atom<Relation> {
+    val instantiator = VariableInstantiator(varAssign)
+    val relationArgs = baseAtom.lit.arguments.map { it.clone().accept(instantiator) }
+    val newRelation = Relation(baseAtom.lit.spelling, relationArgs)
+    return Atom<Relation>(newRelation, baseAtom.negated)
+}
+
+/**
  * Applies the factorize move
  * @param state The state to apply the move on
  * @param clauseID Id of clause to apply the move on
@@ -180,8 +196,29 @@ fun hyper(
         throw IllegalMove("Please select side premisses for hyper resolution")
 
     val clauses = state.clauseSet.clauses
-    val oldMainPremiss = clauses[mainID].clone()
-    var mainPremiss = clauses[mainID].clone()
+    val oldMainPremiss = clauses[mainID]
+
+    // produce the mgu
+    val relations = mutableListOf<Pair<Relation, Relation>>()
+    for ((mAtomID, pair) in atomMap) {
+        val (sClauseID, sAtomID) = pair
+
+        val rel1 = clauses[sClauseID].atoms[sAtomID].lit
+        val rel2 = oldMainPremiss.atoms[mAtomID].lit
+
+        relations.add(Pair(rel1, rel2))
+    }
+
+    val mgu: Map<String, FirstOrderTerm>
+    // Get mgu from unification
+    try {
+        mgu = Unification.unify(relations)
+    } catch (e: UnificationImpossible) {
+        throw IllegalMove("Could not unify main premiss with side premiss")
+    }
+
+    // Build the new clause by cloning atoms from the base clause and applying instantiation
+    var mainPremiss = instantiateReturn(oldMainPremiss, mgu)
 
     // Resolves each side premiss with main premiss
     for ((mAtomID, pair) in atomMap) {
@@ -192,12 +229,15 @@ fun hyper(
         if (!sidePremiss.isPositive())
             throw IllegalMove("Side premiss $sidePremiss is not positive")
 
+        val mAtom = oldMainPremiss.atoms[mAtomID]
+        val sAtom = sidePremiss.atoms[sAtomID]
+
         // Resolve side premiss into main premiss every iteration
         mainPremiss = resolveSidePremiss(
             mainPremiss,
-            oldMainPremiss.atoms[mAtomID],
-            sidePremiss,
-            sidePremiss.atoms[sAtomID]
+            instantiateReturn(mAtom,mgu),
+            instantiateReturn(sidePremiss, mgu),
+            instantiateReturn(sAtom,mgu)
         )
     }
 
@@ -209,6 +249,7 @@ fun hyper(
     clauses.add(mainPremiss)
     state.newestNode = clauses.size - 1
 }
+
 
 /**
  * Resolves a main premiss with a side premiss with respect to a literal
@@ -245,15 +286,7 @@ private fun resolveSidePremiss(
     // Resolve mainPremiss with side premiss by given atom
     val mainResolveSide = buildClause(mainPremiss, mAtom, sidePremiss, sAtom)
 
-    val newClause = Clause<Relation>()
-    val instantiator = VariableInstantiator(mgu)
-    // Build the new clause by cloning atoms from the base clause and applying instantiation
-    mainResolveSide.atoms.forEach {
-        val relationArgs = it.lit.arguments.map { it.clone().accept(instantiator) }
-        val newRelation = Relation(it.lit.spelling, relationArgs)
-        val newAtom = Atom(newRelation, it.negated)
-        newClause.add(newAtom)
-    }
+    val newClause = instantiateReturn(mainResolveSide, mgu)
     return newClause
 }
 

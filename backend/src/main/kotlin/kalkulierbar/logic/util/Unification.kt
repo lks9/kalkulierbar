@@ -15,6 +15,34 @@ class Unification {
     companion object {
 
         /**
+         * Unifies a list of pairs of relations using "Robinson's Algorithm" (1963)
+         * @param r the list of relations to be unified
+         * @return a map of the executed substitutions
+         */
+        fun unify(relations: MutableList<Pair<Relation, Relation>>): Map<String, FirstOrderTerm> {
+            val terms = mutableListOf<Pair<FirstOrderTerm, FirstOrderTerm>>()
+
+            relations.forEach {
+                val (r1,r2) = it
+                val arg1 = r1.arguments
+                val arg2 = r2.arguments
+
+                // Spelling has to be the same
+                if (r1.spelling != r2.spelling)
+                    throw UnificationImpossible("Relations '$r1' and '$r2' have different names")
+                // Arg size has to be the same length
+                if (arg1.size != arg2.size)
+                    throw UnificationImpossible("Relations '$r1' and '$r2' have different numbers of arguments")
+
+                for (i in arg1.indices)
+                    terms.add(Pair(arg1[i], arg2[i]))
+            }
+
+            return unifyTerms(terms)
+        }
+
+
+        /**
          * Unifies two given relations by using "Robinson's Algorithm" (1963)
          * @param r1 the first relation to be unified with r2
          * @param r2 the second relation to be unified with r1
